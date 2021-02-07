@@ -73,6 +73,7 @@ pub enum TransactionCondition {
 #[cfg(test)]
 mod tests {
     use super::{Address, CallRequest, TransactionCondition, TransactionRequest};
+    use hex_literal::hex;
 
     #[test]
     fn should_serialize_call_request() {
@@ -83,7 +84,7 @@ mod tests {
             gas: Some(21_000.into()),
             gas_price: None,
             value: Some(5_000_000.into()),
-            data: Some(vec![1, 2, 3].into()),
+            data: Some(hex!("010203").into()),
         };
 
         // when
@@ -116,7 +117,7 @@ mod tests {
         assert_eq!(deserialized.gas, Some(21_000.into()));
         assert_eq!(deserialized.gas_price, None);
         assert_eq!(deserialized.value, Some(5_000_000.into()));
-        assert_eq!(deserialized.data, Some(vec![1, 2, 3].into()));
+        assert_eq!(deserialized.data, Some(hex!("010203").into()));
     }
 
     #[test]
@@ -128,7 +129,7 @@ mod tests {
             gas: Some(21_000.into()),
             gas_price: None,
             value: Some(5_000_000.into()),
-            data: Some(vec![1, 2, 3].into()),
+            data: Some(hex!("010203").into()),
             nonce: None,
             condition: Some(TransactionCondition::Block(5)),
         };
@@ -169,7 +170,7 @@ mod tests {
         assert_eq!(deserialized.gas, Some(21_000.into()));
         assert_eq!(deserialized.gas_price, None);
         assert_eq!(deserialized.value, Some(5_000_000.into()));
-        assert_eq!(deserialized.data, Some(vec![1, 2, 3].into()));
+        assert_eq!(deserialized.data, Some(hex!("010203").into()));
         assert_eq!(deserialized.nonce, None);
         assert_eq!(deserialized.condition, Some(TransactionCondition::Block(5)));
     }

@@ -1,6 +1,6 @@
 [package]
 name = "web3"
-version = "0.14.0"
+version = "0.15.0"
 description = "Ethereum JSON-RPC client."
 homepage = "https://github.com/tomusdrw/rust-web3"
 repository = "https://github.com/tomusdrw/rust-web3"
@@ -14,16 +14,16 @@ edition = "2018"
 [dependencies]
 arrayvec = "0.5.0"
 derive_more = "0.99.1"
-ethabi = "12.0.0"
-ethereum-types = "0.9.0"
+ethabi = "13.0.0"
+ethereum-types = "0.10.0"
 futures = "0.3.5"
 futures-timer = "3.0.2"
-jsonrpc-core = "15.0.0"
+hex = "0.4"
+jsonrpc-core = "17.0.0"
 log = "0.4.6"
 parking_lot = "0.11.0"
-rlp = "0.4"
-rustc-hex = "2.1.0"
-secp256k1 = { version = "0.19", features = ["recovery"] }
+rlp = "0.5"
+secp256k1 = { version = "0.20", features = ["recovery"], optional = true }
 serde = { version = "1.0.90", features = ["derive"] }
 serde_json = "1.0.39"
 tiny-keccak = { version = "2.0.1", features = ["keccak"] }
@@ -39,24 +39,38 @@ typed-headers = { version = "0.2.0", optional = true }
 async-native-tls = { version = "0.3", optional = true, default-features = false }
 async-std = { version = "1.6", optional = true }
 tokio = { version = "0.2", optional = true, features = ["full"] }
-tokio-util = { version = "0.5", optional = true, features = ["compat"] }
+tokio-util = { version = "0.6", optional = true, features = ["compat"] }
 soketto = { version = "0.4.1", optional = true }
 ## Shared (WS, HTTP)
-native-tls = { version = "0.2", optional = true }
 url = { version = "2.1", optional = true }
+## EIP-1193
+js-sys = { version = "0.3.45", optional = true }
+### This is a transitive dependency, only here so we can turn on its wasm_bindgen feature
+rand = { version = "0.8.1", optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
+wasm-bindgen = { version = "0.2.68", optional = true, features = ["serde-serialize"] }
+wasm-bindgen-futures = { version = "0.4.18", optional = true }
 
 [dev-dependencies]
 # For examples
 env_logger = "0.8"
+hex-literal = "0.3"
+wasm-bindgen-test = "0.3.19"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "0.2", features = ["full"] }
 
 [features]
-default = ["http-tls", "ws-tls-tokio"]
+default = ["http-tls", "signing", "ws-tls-tokio", "ipc-tokio"]
+eip-1193 = ["js-sys", "wasm-bindgen", "wasm-bindgen-futures", "futures-timer/wasm-bindgen", "rand", "getrandom"]
 http = ["hyper", "hyper-proxy", "url", "base64", "typed-headers"]
-http-tls = ["hyper-tls", "native-tls", "http"]
+http-tls = ["hyper-tls", "http"]
+signing = ["secp256k1"]
 ws-tokio = ["soketto", "url", "tokio", "tokio-util"]
 ws-async-std = ["soketto", "url", "async-std"]
-ws-tls-tokio = ["async-native-tls", "native-tls", "async-native-tls/runtime-tokio", "ws-tokio"]
-ws-tls-async-std = ["async-native-tls", "native-tls", "async-native-tls/runtime-async-std", "ws-async-std"]
+ws-tls-tokio = ["async-native-tls", "async-native-tls/runtime-tokio", "ws-tokio"]
+ws-tls-async-std = ["async-native-tls", "async-native-tls/runtime-async-std", "ws-async-std"]
+ipc-tokio = ["tokio"]
+test = []
 
 [workspace]

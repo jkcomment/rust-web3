@@ -1,7 +1,10 @@
+use hex_literal::hex;
 use std::time;
-use web3::contract::{Contract, Options};
-use web3::futures::{future, StreamExt};
-use web3::types::FilterBuilder;
+use web3::{
+    contract::{Contract, Options},
+    futures::{future, StreamExt},
+    types::FilterBuilder,
+};
 
 #[tokio::main]
 async fn main() -> web3::contract::Result<()> {
@@ -26,11 +29,10 @@ async fn main() -> web3::contract::Result<()> {
     let filter = FilterBuilder::default()
         .address(vec![contract.address()])
         .topics(
-            Some(vec![
-                "0xd282f389399565f3671145f5916e51652b60eee8e5c759293a2f5771b8ddfd2e"
-                    .parse()
-                    .unwrap(),
-            ]),
+            Some(vec![hex!(
+                "d282f389399565f3671145f5916e51652b60eee8e5c759293a2f5771b8ddfd2e"
+            )
+            .into()]),
             None,
             None,
             None,

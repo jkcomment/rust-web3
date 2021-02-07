@@ -1,14 +1,16 @@
 //! Ethereum Contract Interface
 
-use crate::api::{Accounts, Eth, Namespace};
-use crate::confirm;
-use crate::contract::tokens::{Detokenize, Tokenize};
-use crate::signing;
-use crate::types::{
-    Address, BlockId, Bytes, CallRequest, FilterBuilder, TransactionCondition, TransactionParameters,
-    TransactionReceipt, TransactionRequest, H256, U256,
+use crate::{
+    api::{Eth, Namespace},
+    confirm,
+    contract::tokens::{Detokenize, Tokenize},
+    futures::Future,
+    types::{
+        Address, BlockId, Bytes, CallRequest, FilterBuilder, TransactionCondition, TransactionReceipt,
+        TransactionRequest, H256, U256,
+    },
+    Transport,
 };
-use crate::Transport;
 use std::{collections::HashMap, hash::Hash, time};
 
 pub mod deploy;
@@ -141,48 +143,6 @@ impl<T: Transport> Contract<T> {
             .map_err(Error::from)
     }
 
-    /// Execute a signed contract function and wait for confirmations
-    pub async fn signed_call_with_confirmations(
-        &self,
-        func: &str,
-        params: impl Tokenize,
-        options: Options,
-        confirmations: usize,
-        key: impl signing::Key,
-    ) -> crate::Result<TransactionReceipt> {
-        let poll_interval = time::Duration::from_secs(1);
-
-        let fn_data = self
-            .abi
-            .function(func)
-            .and_then(|function| function.encode_input(&params.into_tokens()))
-            // TODO [ToDr] SendTransactionWithConfirmation should support custom error type (so that we can return
-            // `contract::Error` instead of more generic `Error`.
-            .map_err(|err| crate::error::Error::Decoder(format!("{:?}", err)))?;
-        let accounts = Accounts::new(self.eth.transport().clone());
-        let mut tx = TransactionParameters {
-            nonce: options.nonce,
-            to: Some(self.address),
-            gas_price: options.gas_price,
-            data: Bytes(fn_data),
-            ..Default::default()
-        };
-        if let Some(gas) = options.gas {
-            tx.gas = gas;
-        }
-        if let Some(value) = options.value {
-            tx.value = value;
-        }
-        let signed = accounts.sign_transaction(tx, key).await?;
-        confirm::send_raw_transaction_with_confirmation(
-            self.eth.transport().clone(),
-            signed.raw_transaction,
-            poll_interval,
-            confirmations,
-        )
-        .await
-    }
-
     /// Execute a contract function and wait for confirmations
     pub async fn call_with_confirmations(
         &self,
@@ -243,31 +203,50 @@ impl<T: Transport> Contract<T> {
     }
 
     /// Call constant function
-    pub async fn query<R, A, B, P>(&self, func: &str, params: P, from: A, options: Options, block: B) -> Result<R>
+    pub fn query<R, A, B, P>(
+        &self,
+        func: &str,
+        params: P,
+        from: A,
+        options: Options,
+        block: B,
+    ) -> impl Future<Output = Result<R>> + '_
     where
         R: Detokenize,
         A: Into<Option<Address>>,
         B: Into<Option<BlockId>>,
         P: Tokenize,
     {
-        let function = self.abi.function(func)?;
-        let call = function.encode_input(&params.into_tokens())?;
-        let bytes = self
-            .eth
-            .call(
-                CallRequest {
-                    from: from.into(),
-                    to: Some(self.address),
-                    gas: options.gas,
-                    gas_price: options.gas_price,
-                    value: options.value,
-                    data: Some(Bytes(call)),
-                },
-                block.into(),
-            )
-            .await?;
-        let output = function.decode_output(&bytes.0)?;
-        R::from_tokens(output)
+        let result = self
+            .abi
+            .function(func)
+            .and_then(|function| {
+                function
+                    .encode_input(&params.into_tokens())
+                    .map(|call| (call, function))
+            })
+            .map(|(call, function)| {
+                let call_future = self.eth.call(
+                    CallRequest {
+                        from: from.into(),
+                        to: Some(self.address),
+                        gas: options.gas,
+                        gas_price: options.gas_price,
+                        value: options.value,
+                        data: Some(Bytes(call)),
+                    },
+                    block.into(),
+                );
+                (call_future, function)
+            });
+        // NOTE for the batch transport to work correctly, we must call `transport.execute` without ever polling the future,
+        // hence it cannot be a fully `async` function.
+        async {
+            let (call_future, function) = result?;
+            let bytes = call_future.await?;
+            let output = function.decode_output(&bytes.0)?;
+            R::from_tokens(output)
+        }
     }
 
     /// Find events matching the topics.
@@ -319,14 +298,66 @@ impl<T: Transport> Contract<T> {
     }
 }
 
+#[cfg(feature = "signing")]
+mod contract_signing {
+    use super::*;
+    use crate::{api::Accounts, signing, types::TransactionParameters};
+
+    impl<T: Transport> Contract<T> {
+        /// Execute a signed contract function and wait for confirmations
+        pub async fn signed_call_with_confirmations(
+            &self,
+            func: &str,
+            params: impl Tokenize,
+            options: Options,
+            confirmations: usize,
+            key: impl signing::Key,
+        ) -> crate::Result<TransactionReceipt> {
+            let poll_interval = time::Duration::from_secs(1);
+
+            let fn_data = self
+                .abi
+                .function(func)
+                .and_then(|function| function.encode_input(&params.into_tokens()))
+                // TODO [ToDr] SendTransactionWithConfirmation should support custom error type (so that we can return
+                // `contract::Error` instead of more generic `Error`.
+                .map_err(|err| crate::error::Error::Decoder(format!("{:?}", err)))?;
+            let accounts = Accounts::new(self.eth.transport().clone());
+            let mut tx = TransactionParameters {
+                nonce: options.nonce,
+                to: Some(self.address),
+                gas_price: options.gas_price,
+                data: Bytes(fn_data),
+                ..Default::default()
+            };
+            if let Some(gas) = options.gas {
+                tx.gas = gas;
+            }
+            if let Some(value) = options.value {
+                tx.value = value;
+            }
+            let signed = accounts.sign_transaction(tx, key).await?;
+            confirm::send_raw_transaction_with_confirmation(
+                self.eth.transport().clone(),
+                signed.raw_transaction,
+                poll_interval,
+                confirmations,
+            )
+            .await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Contract, Options};
-    use crate::api::{self, Namespace};
-    use crate::helpers::tests::TestTransport;
-    use crate::rpc;
-    use crate::types::{Address, BlockId, BlockNumber, H256, U256};
-    use crate::Transport;
+    use crate::{
+        api::{self, Namespace},
+        rpc,
+        transports::test::TestTransport,
+        types::{Address, BlockId, BlockNumber, H256, U256},
+        Transport,
+    };
 
     fn contract<T: Transport>(transport: &T) -> Contract<&T> {
         let eth = api::Eth::new(transport);

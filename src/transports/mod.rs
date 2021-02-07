@@ -15,6 +15,14 @@ pub mod ws;
 #[cfg(any(feature = "ws-tokio", feature = "ws-async-std"))]
 pub use self::ws::WebSocket;
 
+#[cfg(feature = "ipc-tokio")]
+pub mod ipc;
+#[cfg(feature = "ipc-tokio")]
+pub use self::ipc::Ipc;
+
+#[cfg(any(feature = "test", test))]
+pub mod test;
+
 #[cfg(feature = "url")]
 impl From<url::ParseError> for crate::Error {
     fn from(err: url::ParseError) -> Self {
@@ -22,9 +30,12 @@ impl From<url::ParseError> for crate::Error {
     }
 }
 
-#[cfg(feature = "native-tls")]
-impl From<native_tls::Error> for crate::Error {
-    fn from(err: native_tls::Error) -> Self {
+#[cfg(feature = "async-native-tls")]
+impl From<async_native_tls::Error> for crate::Error {
+    fn from(err: async_native_tls::Error) -> Self {
         crate::Error::Transport(format!("{:?}", err))
     }
 }
+
+#[cfg(feature = "eip-1193")]
+pub mod eip_1193;

@@ -1,17 +1,15 @@
 //! Contract deployment utilities
 
+use crate::{
+    api::{Eth, Namespace},
+    confirm,
+    contract::{tokens::Tokenize, Contract, Options},
+    error,
+    types::{Address, Bytes, TransactionReceipt, TransactionRequest},
+    Transport,
+};
 use futures::{Future, TryFutureExt};
-use rustc_hex::{FromHex, ToHex};
-use std::collections::HashMap;
-use std::time;
-
-use crate::api::{Eth, Namespace};
-use crate::confirm;
-use crate::contract::tokens::Tokenize;
-use crate::contract::{Contract, Options};
-use crate::error;
-use crate::types::{Address, Bytes, TransactionReceipt, TransactionRequest};
-use crate::Transport;
+use std::{collections::HashMap, time};
 
 pub use crate::contract::error::deploy::Error;
 
@@ -116,21 +114,22 @@ impl<T: Transport> Builder<T> {
 
         for (lib, address) in self.linker {
             if lib.len() > 38 {
-                return Err(Error::Abi(ethabi::Error::Other(
+                return Err(Error::Abi(ethabi::Error::InvalidName(
                     "The library name should be under 39 characters.".into(),
                 )));
             }
             let replace = format!("__{:_<38}", lib); // This makes the required width 38 characters and will pad with `_` to match it.
-            let address: String = address.as_ref().to_hex();
+            let address: String = hex::encode(address);
             code_hex = code_hex.replacen(&replace, &address, 1);
         }
         code_hex = code_hex.replace("\"", "").replace("0x", ""); // This is to fix truffle + serde_json redundant `"` and `0x`
-        let code = code_hex.from_hex().map_err(ethabi::Error::Hex)?;
+        let code =
+            hex::decode(&code_hex).map_err(|e| ethabi::Error::InvalidName(format!("hex decode error: {}", e)))?;
 
         let params = params.into_tokens();
         let data = match (abi.constructor(), params.is_empty()) {
             (None, false) => {
-                return Err(Error::Abi(ethabi::Error::Other(
+                return Err(Error::Abi(ethabi::Error::InvalidName(
                     "Constructor is not defined in the ABI.".into(),
                 )));
             }
@@ -163,11 +162,13 @@ impl<T: Transport> Builder<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{self, Namespace};
-    use crate::contract::{Contract, Options};
-    use crate::helpers::tests::TestTransport;
-    use crate::rpc;
-    use crate::types::{Address, U256};
+    use crate::{
+        api::{self, Namespace},
+        contract::{Contract, Options},
+        rpc,
+        transports::test::TestTransport,
+        types::{Address, U256},
+    };
     use serde_json::Value;
     use std::collections::HashMap;
 

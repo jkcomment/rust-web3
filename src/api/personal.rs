@@ -1,10 +1,11 @@
 //! `Personal` namespace
 
-use crate::api::Namespace;
-use crate::helpers::{self, CallFuture};
-use crate::types::{Address, RawTransaction, TransactionRequest, H256};
-
-use crate::Transport;
+use crate::{
+    api::Namespace,
+    helpers::{self, CallFuture},
+    types::{Address, RawTransaction, TransactionRequest, H256},
+    Transport,
+};
 
 /// `Personal` namespace
 #[derive(Debug, Clone)]
@@ -76,16 +77,30 @@ impl<T: Transport> Personal<T> {
                 .execute("personal_signTransaction", vec![transaction, password]),
         )
     }
+
+    /// Imports a raw key and protects it with the given password.
+    /// Returns the address of created account.
+    pub fn import_raw_key(&self, private_key: &[u8; 32], password: &str) -> CallFuture<Address, T::Out> {
+        let private_key = hex::encode(private_key);
+        let private_key = helpers::serialize(&private_key);
+        let password = helpers::serialize(&password);
+
+        CallFuture::new(
+            self.transport
+                .execute("personal_importRawKey", vec![private_key, password]),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::api::Namespace;
-    use crate::rpc::Value;
-    use crate::types::{Address, RawTransaction, TransactionRequest};
-    use rustc_hex::FromHex;
-
     use super::Personal;
+    use crate::{
+        api::Namespace,
+        rpc::Value,
+        types::{Address, RawTransaction, TransactionRequest},
+    };
+    use hex_literal::hex;
 
     const EXAMPLE_TX: &str = r#"{
     "raw": "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675",
@@ -135,12 +150,12 @@ mod tests {
 
     rpc_test! (
       Personal:sign_transaction, TransactionRequest {
-        from: "407d73d8a49eeb85d32cf465507dd71d507100c1".parse().unwrap(),
-        to: Some("853f43d8a49eeb85d32cf465507dd71d507100c1".parse().unwrap()),
+        from: hex!("407d73d8a49eeb85d32cf465507dd71d507100c1").into(),
+        to: Some(hex!("853f43d8a49eeb85d32cf465507dd71d507100c1").into()),
         gas: Some(0x7f110.into()),
         gas_price: Some(0x09184e72a000u64.into()),
         value: Some(0x7f110.into()),
-        data: Some(FromHex::from_hex::<Vec<u8>>("603880600c6000396000f300603880600c6000396000f3603880600c6000396000f360").unwrap().into()),
+        data: Some(hex!("603880600c6000396000f300603880600c6000396000f3603880600c6000396000f360").into()),
         nonce: Some(0x0.into()),
         condition: None,
       }, "hunter2"
@@ -149,4 +164,10 @@ mod tests {
       ::serde_json::from_str(EXAMPLE_TX).unwrap()
       => ::serde_json::from_str::<RawTransaction>(EXAMPLE_TX).unwrap()
     );
+
+    rpc_test! {
+      Personal:import_raw_key, &[0u8; 32], "hunter2" =>
+      "personal_importRawKey", vec![r#""0000000000000000000000000000000000000000000000000000000000000000""#, r#""hunter2""#];
+      Value::String("0x0000000000000000000000000000000000000123".into()) => Address::from_low_u64_be(0x123)
+    }
 }
