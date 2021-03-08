@@ -73,7 +73,7 @@ pub struct Http {
 
 impl Http {
     /// Create new HTTP transport connecting to given URL.
-    pub fn new(url: &str) -> error::Result<Self> {
+    pub fn new(url: &str, username: &str, password: &str) -> error::Result<Self> {
         #[cfg(feature = "http-tls")]
         let (proxy_env, connector) = { (env::var("HTTPS_PROXY"), hyper_tls::HttpsConnector::new()) };
         #[cfg(not(feature = "http-tls"))]
@@ -81,12 +81,12 @@ impl Http {
 
         let client = match proxy_env {
             Ok(proxy) => {
-                let mut url = url::Url::parse(&proxy)?;
-                let username = String::from(url.username());
-                let password = String::from(url.password().unwrap_or_default());
+                let url = url::Url::parse(&proxy)?;
+                // let username = String::from(url.username());
+                // let password = String::from(url.password().unwrap_or_default());
 
-                url.set_username("").map_err(|_| Error::Internal)?;
-                url.set_password(None).map_err(|_| Error::Internal)?;
+                // url.set_username("").map_err(|_| Error::Internal)?;
+                // url.set_password(None).map_err(|_| Error::Internal)?;
 
                 let uri = url.to_string().parse()?;
 
@@ -94,7 +94,7 @@ impl Http {
 
                 if username != "" {
                     let credentials =
-                        typed_headers::Credentials::basic(&username, &password).map_err(|_| Error::Internal)?;
+                        typed_headers::Credentials::basic(username, password).map_err(|_| Error::Internal)?;
 
                     proxy.set_authorization(credentials);
                 }
@@ -107,9 +107,9 @@ impl Http {
         };
 
         let basic_auth = {
-            let url = Url::parse(url)?;
-            let user = url.username();
-            let auth = format!("{}:{}", user, url.password().unwrap_or_default());
+            // let url = Url::parse(url)?;
+            // let user = url.username();
+            let auth = format!("{}:{}", username, password);//format!("{}:{}", user, url.password().unwrap_or_default());
             if &auth == ":" {
                 None
             } else {
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn http_supports_basic_auth_with_user_and_password() {
-        let http = Http::new("https://user:password@127.0.0.1:8545").unwrap();
+        let http = Http::new("https://127.0.0.1:8545", "user", "password").unwrap();
         assert!(http.basic_auth.is_some());
         assert_eq!(
             http.basic_auth,
@@ -295,14 +295,14 @@ mod tests {
 
     #[test]
     fn http_supports_basic_auth_with_user_no_password() {
-        let http = Http::new("https://username:@127.0.0.1:8545").unwrap();
+        let http = Http::new("https://127.0.0.1:8545", "username", "").unwrap();
         assert!(http.basic_auth.is_some());
         assert_eq!(http.basic_auth, Some(HeaderValue::from_static("Basic dXNlcm5hbWU6")))
     }
 
     #[test]
     fn http_supports_basic_auth_with_only_password() {
-        let http = Http::new("https://:password@127.0.0.1:8545").unwrap();
+        let http = Http::new("https://27.0.0.1:8545", "", "password").unwrap();
         assert!(http.basic_auth.is_some());
         assert_eq!(http.basic_auth, Some(HeaderValue::from_static("Basic OnBhc3N3b3Jk")))
     }
@@ -340,7 +340,7 @@ mod tests {
         });
 
         // when
-        let client = Http::new(&format!("http://{}", addr)).unwrap();
+        let client = Http::new(&format!("http://{}", addr), "", "").unwrap();
         println!("Sending request");
         let response = client.execute("eth_getAccounts", vec![]).await;
         println!("Got response");
