@@ -73,7 +73,7 @@ pub struct Http {
 
 impl Http {
     /// Create new HTTP transport connecting to given URL.
-    pub fn new(url: &str, username: &str, password: &str) -> error::Result<Self> {
+    pub fn new(url: &str) -> error::Result<Self> {
         #[cfg(feature = "http-tls")]
         let (proxy_env, connector) = { (env::var("HTTPS_PROXY"), hyper_tls::HttpsConnector::new()) };
         #[cfg(not(feature = "http-tls"))]
@@ -81,12 +81,12 @@ impl Http {
 
         let client = match proxy_env {
             Ok(proxy) => {
-                let url = url::Url::parse(&proxy)?;
-                // let username = String::from(url.username());
-                // let password = String::from(url.password().unwrap_or_default());
+                let mut url = url::Url::parse(&proxy)?;
+                let username = String::from(url.username());
+                let password = String::from(url.password().unwrap_or_default());
 
-                // url.set_username("").map_err(|_| Error::Internal)?;
-                // url.set_password(None).map_err(|_| Error::Internal)?;
+                url.set_username("").map_err(|_| Error::Internal)?;
+                url.set_password(None).map_err(|_| Error::Internal)?;
 
                 let uri = url.to_string().parse()?;
 
@@ -94,7 +94,7 @@ impl Http {
 
                 if username != "" {
                     let credentials =
-                        typed_headers::Credentials::basic(username, password).map_err(|_| Error::Internal)?;
+                        typed_headers::Credentials::basic(&username, &password).map_err(|_| Error::Internal)?;
 
                     proxy.set_authorization(credentials);
                 }
@@ -107,9 +107,9 @@ impl Http {
         };
 
         let basic_auth = {
-            // let url = Url::parse(url)?;
-            // let user = url.username();
-            let auth = format!("{}:{}", username, password);//format!("{}:{}", user, url.password().unwrap_or_default());
+            let url = Url::parse(url)?;
+            let user = url.username();
+            let auth = format!("{}:{}", user, url.password().unwrap_or_default());
             if &auth == ":" {
                 None
             } else {
@@ -124,6 +124,61 @@ impl Http {
             client,
         })
     }
+
+
+
+    /// Create new HTTP transport connecting to given URL.
+    // pub fn new(url: &str, username: &str, password: &str) -> error::Result<Self> {
+    //     #[cfg(feature = "http-tls")]
+    //     let (proxy_env, connector) = { (env::var("HTTPS_PROXY"), hyper_tls::HttpsConnector::new()) };
+    //     #[cfg(not(feature = "http-tls"))]
+    //     let (proxy_env, connector) = { (env::var("HTTP_PROXY"), hyper::client::HttpConnector::new()) };
+
+    //     let client = match proxy_env {
+    //         Ok(proxy) => {
+    //             let url = url::Url::parse(&proxy)?;
+    //             // let username = String::from(url.username());
+    //             // let password = String::from(url.password().unwrap_or_default());
+
+    //             // url.set_username("").map_err(|_| Error::Internal)?;
+    //             // url.set_password(None).map_err(|_| Error::Internal)?;
+
+    //             let uri = url.to_string().parse()?;
+
+    //             let mut proxy = hyper_proxy::Proxy::new(hyper_proxy::Intercept::All, uri);
+
+    //             if username != "" {
+    //                 let credentials =
+    //                     typed_headers::Credentials::basic(username, password).map_err(|_| Error::Internal)?;
+
+    //                 proxy.set_authorization(credentials);
+    //             }
+
+    //             let proxy_connector = hyper_proxy::ProxyConnector::from_proxy(connector, proxy)?;
+
+    //             Client::Proxy(hyper::Client::builder().build(proxy_connector))
+    //         }
+    //         Err(_) => Client::NoProxy(hyper::Client::builder().build(connector)),
+    //     };
+
+    //     let basic_auth = {
+    //         // let url = Url::parse(url)?;
+    //         // let user = url.username();
+    //         let auth = format!("{}:{}", username, password);//format!("{}:{}", user, url.password().unwrap_or_default());
+    //         if &auth == ":" {
+    //             None
+    //         } else {
+    //             Some(HeaderValue::from_str(&format!("Basic {}", base64::encode(&auth)))?)
+    //         }
+    //     };
+
+    //     Ok(Http {
+    //         id: Arc::new(AtomicUsize::new(1)),
+    //         url: url.parse()?,
+    //         basic_auth,
+    //         client,
+    //     })
+    // }
 
     fn send_request<F, O>(&self, id: RequestId, request: rpc::Request, extract: F) -> Response<F>
     where
